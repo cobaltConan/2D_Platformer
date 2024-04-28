@@ -16,7 +16,7 @@ Sprite :: struct {
     spriteHeight: u64,
     animSpeed: f64,
     framePos: f64,
-    lastFrameAnim: u64 // last frame of the animation, to loop to
+    lastFrameAnim: u64, // last frame of the animation, to loop to
 }
 
 Vec2 :: struct {
@@ -87,21 +87,18 @@ draw_sprite :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sc
     }
 }
 
-scale_scene :: proc(scene: ^[dynamic]u32, scaScene: ^[dynamic]u32, ctx: Ctx) -> ^[dynamic]u32 {
-    scaledScene := scaScene^
+scale_scene :: proc(scene: ^[dynamic]u32, scaledScene: ^[dynamic]u32, ctx: Ctx) {
     scaledWidth := ctx.width * ctx.sceneScaling
 
     for y in 0 ..< ctx.height {
         for x in 0 ..< ctx.width {
             for j in 0 ..< ctx.sceneScaling {
-                for i in 0 ..< ctx.sceneScaling {
-                    scaledScene[(ctx.sceneScaling * y + j) * scaledWidth + x * ctx.sceneScaling + i] = scene^[y * ctx.width + x]
+               for i in 0 ..< ctx.sceneScaling {
+                    scaledScene^[(ctx.sceneScaling * y + j) * scaledWidth + x * ctx.sceneScaling + i] = scene^[y * ctx.width + x]
                 }
             }
         }
     }
-
-    return &scaledScene
 }
 
 // create better function that can take a string and print it to the screen
@@ -134,8 +131,8 @@ sdl_render :: proc(width, height: i32) {
     assert(sdl2.Init(sdl2.INIT_EVERYTHING) == 0, sdl2.GetErrorString())
 	defer sdl2.Quit()
 
-    //window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
-    window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width, height, sdl2.WINDOW_SHOWN)
+    window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
+    //window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width, height, sdl2.WINDOW_SHOWN)
     assert(window != nil, sdl2.GetErrorString())
     defer sdl2.DestroyWindow(window)
     renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
@@ -155,8 +152,8 @@ sdl_render :: proc(width, height: i32) {
     gmask: u32 = 0x0000ff00
     bmask: u32 = 0x00ff0000
     amask: u32 = 0xff000000
-
-    tempSurface := sdl2.CreateRGBSurface(0, width, height, 32, rmask, gmask, bmask, amask)
+    
+    tempSurface := sdl2.CreateRGBSurface(0, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), 32, rmask, gmask, bmask, amask)
     texture := sdl2.CreateTextureFromSurface(renderer, tempSurface)
     sdl2.FreeSurface(tempSurface)
 
@@ -164,6 +161,9 @@ sdl_render :: proc(width, height: i32) {
 
     scene := [dynamic]u32{}
     resize(&scene, int(height * width))
+
+    scaledScene := [dynamic]u32{}
+    resize(&scaledScene, int(ctx.width * ctx.height * ctx.sceneScaling * ctx.sceneScaling))
 
     spriteCoords: Vec2
     tempY: f64
@@ -193,8 +193,6 @@ sdl_render :: proc(width, height: i32) {
     frame_end: f64
     frame_elapsed: f64 = 0.001
 
-    scaledScene := [dynamic]u32{}
-    resize(&scaledScene, int(ctx.width * ctx.height * ctx.sceneScaling * ctx.sceneScaling))
 
     for isRunning {
         process_input(&isRunning)
@@ -202,13 +200,12 @@ sdl_render :: proc(width, height: i32) {
         tempY += frame_elapsed * 50
         spriteCoords.y = int(tempY)
 
-        //draw_sprite(&sprite, &scene, spriteCoords, Vec2{int(width), int(height)})
         draw_sprite(&satyr, &scene, spriteCoords, Vec2{int(width), int(height)}, frame_elapsed)
 
-        //scale_scene(&scene, &scaledScene, ctx)
+        scale_scene(&scene, &scaledScene, ctx)
 
-        sdl2.UpdateTexture(texture, nil, raw_data(scene), width * size_of(u32))
-        //sdl2.UpdateTexture(texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
+        //sdl2.UpdateTexture(texture, nil, raw_data(scene), width * size_of(u32))
+        sdl2.UpdateTexture(texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
 
         surfaceMessage = sdl_ttf.RenderText_Solid(hack, strings.clone_to_cstring(strconv.ftoa(buf[:], 1 / frame_elapsed, 'f', 2, 64)), white)
         message = sdl2.CreateTextureFromSurface(renderer, surfaceMessage)
@@ -216,8 +213,8 @@ sdl_render :: proc(width, height: i32) {
         srcRect, bounds: sdl2.Rect
         srcRect.x = 0
         srcRect.y = 0
-        srcRect.w = width
-        srcRect.h = height
+        srcRect.w = width * i32(ctx.sceneScaling)
+        srcRect.h = height * i32(ctx.sceneScaling)
         bounds = srcRect
         sdl2.RenderCopy(renderer, texture, &srcRect, &bounds)
         sdl2.RenderCopy(renderer, message, nil, &messageRect)
