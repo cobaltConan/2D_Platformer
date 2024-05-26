@@ -20,6 +20,7 @@ Sprite :: struct {
     framePos: f64,
     lastFrameAnim: u64, // last frame of the animation, to loop to
     direction: Direction,
+    stationary: bool,
 }
 
 Vec2 :: struct {
@@ -29,6 +30,7 @@ Vec2 :: struct {
 
 Player :: struct {
     direction: Direction,
+    stationary: bool,
 }
 
 Ctx :: struct {
@@ -53,12 +55,31 @@ process_input :: proc(isRunning: ^bool, player: ^Player) {
                 isRunning^ = false
             case .RIGHT:
                 player.direction = Direction.right
+                player.stationary = false
             case.d:
                 player.direction = Direction.right
+                player.stationary = false
             case.a:
                 player.direction = Direction.left
+                player.stationary = false
             case .LEFT:
                 player.direction = Direction.left
+                player.stationary = false
+            }
+        case .KEYUP:
+			#partial switch(event.key.keysym.sym) {
+            case .RIGHT:
+                player.direction = Direction.right
+                player.stationary = true
+            case.d:
+                player.direction = Direction.right
+                player.stationary = true
+            case.a:
+                player.direction = Direction.left
+                player.stationary = true
+            case .LEFT:
+                player.direction = Direction.left
+                player.stationary = true
             }
         }
     }
@@ -174,6 +195,7 @@ sdl_render :: proc(width, height: i32) {
     satyr.direction = Direction.left
 
     player: Player
+    player.stationary = true
 
     rmask: u32 = 0x000000ff
     gmask: u32 = 0x0000ff00
@@ -228,13 +250,15 @@ sdl_render :: proc(width, height: i32) {
 
         satyr.direction = player.direction
 
+        if player.stationary == false {
         if satyr.direction == Direction.right {
             tempX += frame_elapsed * 50
         } else if satyr.direction == Direction.left {
             tempX -= frame_elapsed * 50
         }
+            spriteCoords.x = int(tempX)
+        }
 
-        spriteCoords.x = int(tempX)
 
         //tempY += frame_elapsed * 50
         //spriteCoords.y = int(tempY)
