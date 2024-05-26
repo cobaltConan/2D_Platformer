@@ -8,6 +8,8 @@ import "core:strings"
 import "core:strconv"
 import "core:math"
 
+Direction :: enum {right, left}
+
 Sprite :: struct {
     width: u64,
     height: u64,
@@ -17,11 +19,16 @@ Sprite :: struct {
     animSpeed: f64,
     framePos: f64,
     lastFrameAnim: u64, // last frame of the animation, to loop to
+    direction: Direction,
 }
 
 Vec2 :: struct {
     x: int,
     y: int,
+}
+
+Player :: struct {
+    direction: Direction,
 }
 
 Ctx :: struct {
@@ -33,7 +40,7 @@ Ctx :: struct {
     sceneScaling: u64,
 }
 
-process_input :: proc(isRunning: ^bool) {
+process_input :: proc(isRunning: ^bool, player: ^Player) {
     event: sdl2.Event
 
     for sdl2.PollEvent(&event) {
@@ -44,6 +51,14 @@ process_input :: proc(isRunning: ^bool) {
 			#partial switch(event.key.keysym.sym) {
 			case .ESCAPE:
                 isRunning^ = false
+            case .RIGHT:
+                player.direction = Direction.right
+            case.d:
+                player.direction = Direction.right
+            case.a:
+                player.direction = Direction.left
+            case .LEFT:
+                player.direction = Direction.left
             }
         }
     }
@@ -78,10 +93,20 @@ draw_sprite :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sc
     }
     spriteIndex: u64 = u64(math.round(sprite.framePos))
 
-    for y in 0 ..< sprite.spriteHeight {
-        for x in 0 ..< sprite.spriteWidth {
-            if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
-                pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
+    if sprite.direction == Direction.right {
+        for y in 0 ..< sprite.spriteHeight {
+            for x in 0 ..< sprite.spriteWidth {
+                if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
+                    pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
+                }
+            }
+        }
+    } else if sprite.direction == Direction.left {
+        for y in 0 ..< sprite.spriteHeight {
+            for x in 0 ..< sprite.spriteWidth {
+                if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
+                    pixelArray[sceneInfo.x * (int(y) + coords.y) + int(sprite.spriteWidth) - int(x) + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
+                }
             }
         }
     }
@@ -132,7 +157,6 @@ sdl_render :: proc(width, height: i32) {
 	defer sdl2.Quit()
 
     window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
-    //window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width, height, sdl2.WINDOW_SHOWN)
     assert(window != nil, sdl2.GetErrorString())
     defer sdl2.DestroyWindow(window)
     renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
@@ -147,6 +171,9 @@ sdl_render :: proc(width, height: i32) {
     satyr.spriteHeight = 32
     satyr.animSpeed = 10
     satyr.lastFrameAnim = 7
+    satyr.direction = Direction.left
+
+    player: Player
 
     rmask: u32 = 0x000000ff
     gmask: u32 = 0x0000ff00
@@ -193,18 +220,30 @@ sdl_render :: proc(width, height: i32) {
     frame_end: f64
     frame_elapsed: f64 = 0.001
 
+    tempX: f64
+
 
     for isRunning {
-        process_input(&isRunning)
+        process_input(&isRunning, &player)
 
-        tempY += frame_elapsed * 50
-        spriteCoords.y = int(tempY)
+        satyr.direction = player.direction
+
+        if satyr.direction == Direction.right {
+            tempX += frame_elapsed * 50
+        } else if satyr.direction == Direction.left {
+            tempX -= frame_elapsed * 50
+        }
+
+        spriteCoords.x = int(tempX)
+
+        //tempY += frame_elapsed * 50
+        //spriteCoords.y = int(tempY)
+        spriteCoords.y = int(ctx.height - satyr.spriteHeight) + 3
 
         draw_sprite(&satyr, &scene, spriteCoords, Vec2{int(width), int(height)}, frame_elapsed)
 
         scale_scene(&scene, &scaledScene, ctx)
 
-        //sdl2.UpdateTexture(texture, nil, raw_data(scene), width * size_of(u32))
         sdl2.UpdateTexture(texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
 
         surfaceMessage = sdl_ttf.RenderText_Solid(hack, strings.clone_to_cstring(strconv.ftoa(buf[:], 1 / frame_elapsed, 'f', 2, 64)), white)
@@ -220,6 +259,13 @@ sdl_render :: proc(width, height: i32) {
         sdl2.RenderCopy(renderer, message, nil, &messageRect)
         sdl2.RenderPresent(renderer)
         sdl2.RenderClear(renderer)
+        
+        // cleaning up scene
+        for y in 0 ..< ctx.height {
+            for x in 0 ..< ctx.width {
+                scene[y * ctx.width + x] = 0
+                }
+        }
 
         frame_end     = f64(sdl2.GetPerformanceCounter()) / f64(sdl2.GetPerformanceFrequency())
 		frame_elapsed = frame_end - frame_start
