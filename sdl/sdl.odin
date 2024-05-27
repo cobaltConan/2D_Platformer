@@ -40,6 +40,7 @@ Ctx :: struct {
     frameEnd: f64,
     frameElapsed: f64,
     sceneScaling: u64,
+    isRunning: bool,
 }
 
 SDL :: struct {
@@ -50,6 +51,7 @@ SDL :: struct {
     font: ^sdl_ttf.Font,
     fontColour: sdl2.Colour,
     surfaceMessage: ^sdl2.Surface,
+    messageRect: sdl2.Rect,
 }
 
 process_input :: proc(isRunning: ^bool, player: ^Player) {
@@ -173,7 +175,7 @@ sdl_ttf_init :: proc(fontPath: string, renderer: ^sdl2.Renderer) -> ^sdl2.Textur
     return message
 }
 
-sdl_init :: proc(ctx: Ctx) -> SDL {
+sdl_init :: proc(ctx: ^Ctx) -> SDL {
     assert(sdl2.Init(sdl2.INIT_EVERYTHING) == 0, sdl2.GetErrorString())
     window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, i32(ctx.width) * i32(ctx.sceneScaling), i32(ctx.height) * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
     assert(window != nil, sdl2.GetErrorString())
@@ -199,7 +201,15 @@ sdl_init :: proc(ctx: Ctx) -> SDL {
     message := sdl2.CreateTextureFromSurface(renderer, surfaceMessage)
     sdl2.FreeSurface(surfaceMessage)
 
-    sdl: SDL = {renderer, window, texture, message, hack, white, surfaceMessage}
+    messageRect: sdl2.Rect
+    messageRect.x = 2680
+    messageRect.y = 0
+    messageRect.w = 200
+    messageRect.h = 100
+
+    ctx^.isRunning = true
+
+    sdl: SDL = {renderer, window, texture, message, hack, white, surfaceMessage, messageRect}
     return sdl
 }
 
@@ -214,7 +224,7 @@ sdl_render :: proc(width, height: i32) {
     ctx.width = u64(width)
     ctx.height = u64(height)
 
-    sdl := sdl_init(ctx)
+    sdl := sdl_init(&ctx)
     defer {
         sdl2.Quit()
         sdl2.DestroyWindow(sdl.window)
@@ -237,8 +247,6 @@ sdl_render :: proc(width, height: i32) {
     player: Player
     player.stationary = true
 
-    isRunning := true
-
     scene := [dynamic]u32{}
     resize(&scene, int(height * width))
 
@@ -248,11 +256,6 @@ sdl_render :: proc(width, height: i32) {
     spriteCoords: Vec2
     tempY: f64
 
-    messageRect : sdl2.Rect
-    messageRect.x = 2680
-    messageRect.y = 0
-    messageRect.w = 200
-    messageRect.h = 100
     buf: [10]byte
     x := 0
 
@@ -264,8 +267,8 @@ sdl_render :: proc(width, height: i32) {
     tempX: f64
 
 
-    for isRunning {
-        process_input(&isRunning, &player)
+    for ctx.isRunning {
+        process_input(&ctx.isRunning, &player)
 
         satyr.direction = player.direction
 
@@ -298,7 +301,7 @@ sdl_render :: proc(width, height: i32) {
         srcRect.h = height * i32(ctx.sceneScaling)
         bounds = srcRect
         sdl2.RenderCopy(sdl.renderer, sdl.texture, &srcRect, &bounds)
-        sdl2.RenderCopy(sdl.renderer, sdl.message, nil, &messageRect)
+        sdl2.RenderCopy(sdl.renderer, sdl.message, nil, &sdl.messageRect)
         sdl2.RenderPresent(sdl.renderer)
         sdl2.RenderClear(sdl.renderer)
         
