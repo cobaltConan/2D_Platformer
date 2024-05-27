@@ -42,6 +42,16 @@ Ctx :: struct {
     sceneScaling: u64,
 }
 
+SDL :: struct {
+    renderer: ^sdl2.Renderer, 
+    window: ^sdl2.Window, 
+    texture: ^sdl2.Texture,
+    message: ^sdl2.Texture,
+    font: ^sdl_ttf.Font,
+    fontColour: sdl2.Colour,
+    surfaceMessage: ^sdl2.Surface,
+}
+
 process_input :: proc(isRunning: ^bool, player: ^Player) {
     event: sdl2.Event
 
@@ -163,7 +173,37 @@ sdl_ttf_init :: proc(fontPath: string, renderer: ^sdl2.Renderer) -> ^sdl2.Textur
     return message
 }
 
-debug_type :: proc(item: any) {
+sdl_init :: proc(ctx: Ctx) -> SDL {
+    assert(sdl2.Init(sdl2.INIT_EVERYTHING) == 0, sdl2.GetErrorString())
+    window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, i32(ctx.width) * i32(ctx.sceneScaling), i32(ctx.height) * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
+    assert(window != nil, sdl2.GetErrorString())
+    renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
+    assert(renderer != nil, sdl2.GetErrorString())
+
+    rmask: u32 = 0x000000ff
+    gmask: u32 = 0x0000ff00
+    bmask: u32 = 0x00ff0000
+    amask: u32 = 0xff000000
+    
+    tempSurface := sdl2.CreateRGBSurface(0, i32(ctx.width) * i32(ctx.sceneScaling), i32(ctx.height) * i32(ctx.sceneScaling), 32, rmask, gmask, bmask, amask)
+    texture := sdl2.CreateTextureFromSurface(renderer, tempSurface)
+    sdl2.FreeSurface(tempSurface)
+
+    // font init
+    init_font := sdl_ttf.Init()
+	assert(init_font == 0, sdl2.GetErrorString())
+    hack := sdl_ttf.OpenFont(`sdl/hack.ttf`, 20)
+	assert(hack != nil, sdl2.GetErrorString())
+    white := sdl2.Colour{255, 255 ,255 ,255}
+    surfaceMessage := sdl_ttf.RenderText_Solid(hack, "Hello, world!", white)
+    message := sdl2.CreateTextureFromSurface(renderer, surfaceMessage)
+    sdl2.FreeSurface(surfaceMessage)
+
+    sdl: SDL = {renderer, window, texture, message, hack, white, surfaceMessage}
+    return sdl
+}
+
+debug_type :: proc(item: typeid) {
     fmt.println(typeid_of(type_of(item))) 
 }
 
@@ -174,15 +214,15 @@ sdl_render :: proc(width, height: i32) {
     ctx.width = u64(width)
     ctx.height = u64(height)
 
-    assert(sdl2.Init(sdl2.INIT_EVERYTHING) == 0, sdl2.GetErrorString())
-	defer sdl2.Quit()
-
-    window := sdl2.CreateWindow("Le SDL", sdl2.WINDOWPOS_CENTERED, sdl2.WINDOWPOS_CENTERED, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), sdl2.WINDOW_SHOWN)
-    assert(window != nil, sdl2.GetErrorString())
-    defer sdl2.DestroyWindow(window)
-    renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
-    assert(renderer != nil, sdl2.GetErrorString())
-    defer sdl2.DestroyRenderer(renderer)
+    sdl := sdl_init(ctx)
+    defer {
+        sdl2.Quit()
+        sdl2.DestroyWindow(sdl.window)
+        sdl2.DestroyRenderer(sdl.renderer)
+        sdl2.DestroyTexture(sdl.texture)
+        sdl2.DestroyTexture(sdl.message)
+        sdl_ttf.Quit()
+    }
 
     sprite := load_sprite(`sdl/rocky_roads/Tilesets/tileset_forest.png`)^
     sprite.spriteWidth = sprite.width
@@ -197,15 +237,6 @@ sdl_render :: proc(width, height: i32) {
     player: Player
     player.stationary = true
 
-    rmask: u32 = 0x000000ff
-    gmask: u32 = 0x0000ff00
-    bmask: u32 = 0x00ff0000
-    amask: u32 = 0xff000000
-    
-    tempSurface := sdl2.CreateRGBSurface(0, width * i32(ctx.sceneScaling), height * i32(ctx.sceneScaling), 32, rmask, gmask, bmask, amask)
-    texture := sdl2.CreateTextureFromSurface(renderer, tempSurface)
-    sdl2.FreeSurface(tempSurface)
-
     isRunning := true
 
     scene := [dynamic]u32{}
@@ -216,18 +247,6 @@ sdl_render :: proc(width, height: i32) {
 
     spriteCoords: Vec2
     tempY: f64
-    
-    // font init
-    init_font := sdl_ttf.Init()
-	assert(init_font == 0, sdl2.GetErrorString())
-    hack := sdl_ttf.OpenFont(`sdl/hack.ttf`, 20)
-	assert(hack != nil, sdl2.GetErrorString())
-    white := sdl2.Colour{255, 255 ,255 ,255}
-    surfaceMessage := sdl_ttf.RenderText_Solid(hack, "Hello, world!", white)
-    message := sdl2.CreateTextureFromSurface(renderer, surfaceMessage)
-    sdl2.FreeSurface(surfaceMessage)
-    defer sdl2.DestroyTexture(message)
-    defer sdl_ttf.Quit()
 
     messageRect : sdl2.Rect
     messageRect.x = 2680
@@ -259,7 +278,6 @@ sdl_render :: proc(width, height: i32) {
             spriteCoords.x = int(tempX)
         }
 
-
         //tempY += frame_elapsed * 50
         //spriteCoords.y = int(tempY)
         spriteCoords.y = int(ctx.height - satyr.spriteHeight) + 3
@@ -268,10 +286,10 @@ sdl_render :: proc(width, height: i32) {
 
         scale_scene(&scene, &scaledScene, ctx)
 
-        sdl2.UpdateTexture(texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
+        sdl2.UpdateTexture(sdl.texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
 
-        surfaceMessage = sdl_ttf.RenderText_Solid(hack, strings.clone_to_cstring(strconv.ftoa(buf[:], 1 / frame_elapsed, 'f', 2, 64)), white)
-        message = sdl2.CreateTextureFromSurface(renderer, surfaceMessage)
+        sdl.surfaceMessage = sdl_ttf.RenderText_Solid(sdl.font, strings.clone_to_cstring(strconv.ftoa(buf[:], 1 / frame_elapsed, 'f', 2, 64)), sdl.fontColour)
+        sdl.message = sdl2.CreateTextureFromSurface(sdl.renderer, sdl.surfaceMessage)
 
         srcRect, bounds: sdl2.Rect
         srcRect.x = 0
@@ -279,16 +297,16 @@ sdl_render :: proc(width, height: i32) {
         srcRect.w = width * i32(ctx.sceneScaling)
         srcRect.h = height * i32(ctx.sceneScaling)
         bounds = srcRect
-        sdl2.RenderCopy(renderer, texture, &srcRect, &bounds)
-        sdl2.RenderCopy(renderer, message, nil, &messageRect)
-        sdl2.RenderPresent(renderer)
-        sdl2.RenderClear(renderer)
+        sdl2.RenderCopy(sdl.renderer, sdl.texture, &srcRect, &bounds)
+        sdl2.RenderCopy(sdl.renderer, sdl.message, nil, &messageRect)
+        sdl2.RenderPresent(sdl.renderer)
+        sdl2.RenderClear(sdl.renderer)
         
         // cleaning up scene
         for y in 0 ..< ctx.height {
             for x in 0 ..< ctx.width {
                 scene[y * ctx.width + x] = 0
-                }
+            }
         }
 
         frame_end     = f64(sdl2.GetPerformanceCounter()) / f64(sdl2.GetPerformanceFrequency())
