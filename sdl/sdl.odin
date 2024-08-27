@@ -23,6 +23,15 @@ Sprite :: struct {
     stationary: bool,
 }
 
+TileSet :: struct {
+    width: u64,
+    height: u64,
+    pixels: [dynamic]u32,
+    tileIndex: u64,
+    tileWidth: u64,
+    tileHeight: u64,
+}
+
 Vec2 :: struct {
     x: int,
     y: int,
@@ -97,29 +106,57 @@ process_input :: proc(isRunning: ^bool, player: ^Player) {
     }
 }
 
-load_sprite :: proc(spriteFile: string) -> ^Sprite {
+load_from_png :: proc(spriteFile: string, array: ^[dynamic]u32) -> (width:u64, height: u64) {
     spriteUnpacked, sprite_err := png.load(spriteFile) // returns the spriteUnpacked as RGBA, each as separate array entry (width * depth * channels)
     if sprite_err != nil {
         fmt.println(strings.concatenate({string("Could't load png: "), spriteFile}))
     }
 
-    sprite: Sprite
-    spritePixel: u32
-    resize(&sprite.pixels, spriteUnpacked.width * spriteUnpacked.height)
+    resize(array, spriteUnpacked.width * spriteUnpacked.height)
     
-    sprite.width = u64(spriteUnpacked.width)
-    sprite.height = u64(spriteUnpacked.height)
+    width = u64(spriteUnpacked.width)
+    height = u64(spriteUnpacked.height)
+    spritePixel: u32
 
     for i := 0; i < (spriteUnpacked.width * spriteUnpacked.height * spriteUnpacked.channels); i += 4 {
         spritePixel = u32(spriteUnpacked.pixels.buf[i]) << 24 + u32(spriteUnpacked.pixels.buf[i + 1]) << 16 + u32(spriteUnpacked.pixels.buf[i + 2]) << 8 + u32(spriteUnpacked.pixels.buf[i + 3])
         spritePixel = u32(spriteUnpacked.pixels.buf[i + 3]) << 24 + u32(spriteUnpacked.pixels.buf[i + 2]) << 16 + u32(spriteUnpacked.pixels.buf[i + 1]) << 8 + u32(spriteUnpacked.pixels.buf[i])
-        sprite.pixels[i / 4] = spritePixel
+        array^[i / 4] = spritePixel
     }
 
-    return &sprite
+    return width, height
 }
 
-draw_sprite :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sceneInfo: Vec2, dt: f64) {
+draw_tile :: proc(tileSet: ^TileSet, pixelArray: ^[dynamic]u32, index: u64, ctx: ^Ctx) {
+    /*
+    for y in 0 ..< tileSet.tileHeight {
+        for x in 0 ..< tileSet.tileWidth {
+            //if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
+                pixelArray[ctx.width * y + x] = tileSet.pixels[tileSet.width * y + x]
+                //pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 8) + x * sprite.spriteWidth]
+            //}
+        }
+    }
+    */
+
+    for y in 0 ..< u64(96) {
+        for x in 0 ..< u64(192) {
+            pixelArray[ctx.width * y + x] = tileSet.pixels[192 * y + x]
+        }
+    }
+}
+
+draw_sprite_static :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sceneInfo: Vec2) {
+    for y in 0 ..< sprite.spriteHeight {
+        for x in 0 ..< sprite.spriteWidth {
+            if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
+                pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 8) + x * sprite.spriteWidth]
+            }
+        }
+    }
+}
+
+draw_sprite_dynamic :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sceneInfo: Vec2, dt: f64) {
     sprite.framePos += dt * sprite.animSpeed
     if sprite.framePos > f64(sprite.lastFrameAnim) + 0.5 {
         sprite.framePos = 0
@@ -234,10 +271,13 @@ sdl_render :: proc(width, height: i32) {
         sdl_ttf.Quit()
     }
 
-    sprite := load_sprite(`sdl/rocky_roads/Tilesets/tileset_forest.png`)^
-    sprite.spriteWidth = sprite.width
-    sprite.spriteHeight = sprite.height
-    satyr := load_sprite(`sdl/satyr-Sheet.png`)^
+
+    tileSet: TileSet
+    tileSet.width, tileSet.height = load_from_png(`sdl/rocky_roads/Tilesets/tileset_forest.png`, &tileSet.pixels)
+    tileSet.tileWidth = 16
+    tileSet.tileHeight = 16
+    satyr: Sprite
+    satyr.width, satyr.height = load_from_png(`sdl/satyr-Sheet.png`, &satyr.pixels)
     satyr.spriteWidth = 32
     satyr.spriteHeight = 32
     satyr.animSpeed = 10
@@ -270,6 +310,8 @@ sdl_render :: proc(width, height: i32) {
     for ctx.isRunning {
         process_input(&ctx.isRunning, &player)
 
+        draw_tile(&tileSet, &scene, 0, &ctx)
+
         satyr.direction = player.direction
 
         if player.stationary == false {
@@ -285,7 +327,7 @@ sdl_render :: proc(width, height: i32) {
         //spriteCoords.y = int(tempY)
         spriteCoords.y = int(ctx.height - satyr.spriteHeight) + 3
 
-        draw_sprite(&satyr, &scene, spriteCoords, Vec2{int(width), int(height)}, frame_elapsed)
+        draw_sprite_dynamic(&satyr, &scene, spriteCoords, Vec2{int(width), int(height)}, frame_elapsed)
 
         scale_scene(&scene, &scaledScene, ctx)
 
