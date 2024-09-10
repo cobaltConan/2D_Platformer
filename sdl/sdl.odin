@@ -11,25 +11,25 @@ import "core:math"
 Direction :: enum {right, left}
 
 Sprite :: struct {
-    width: u64,
-    height: u64,
+    width: int,
+    height: int,
     pixels: [dynamic]u32,
-    spriteWidth: u64,
-    spriteHeight: u64,
+    spriteWidth: int,
+    spriteHeight: int,
     animSpeed: f64,
     framePos: f64,
-    lastFrameAnim: u64, // last frame of the animation, to loop to
+    lastFrameAnim: int, // last frame of the animation, to loop to
     direction: Direction,
     stationary: bool,
 }
 
 TileSet :: struct {
-    width: u64,
-    height: u64,
+    width: int,
+    height: int,
     pixels: [dynamic]u32,
-    tileIndex: u64,
-    tileWidth: u64,
-    tileHeight: u64,
+    tileIndex: int,
+    tileWidth: int,
+    tileHeight: int,
 }
 
 Vec2 :: struct {
@@ -43,12 +43,12 @@ Player :: struct {
 }
 
 Ctx :: struct {
-    width: u64,
-    height: u64,
-    frameStart: f64,
+    width: int,
+    height: int,
+    frameStart: int,
     frameEnd: f64,
     frameElapsed: f64,
-    sceneScaling: u64,
+    sceneScaling: int,
     isRunning: bool,
 }
 
@@ -106,7 +106,7 @@ process_input :: proc(isRunning: ^bool, player: ^Player) {
     }
 }
 
-load_from_png :: proc(spriteFile: string, array: ^[dynamic]u32) -> (width:u64, height: u64) {
+load_from_png :: proc(spriteFile: string, array: ^[dynamic]u32) -> (width:int, height: int) {
     spriteUnpacked, sprite_err := png.load(spriteFile) // returns the spriteUnpacked as RGBA, each as separate array entry (width * depth * channels)
     if sprite_err != nil {
         fmt.println(strings.concatenate({string("Could't load png: "), spriteFile}))
@@ -114,8 +114,8 @@ load_from_png :: proc(spriteFile: string, array: ^[dynamic]u32) -> (width:u64, h
 
     resize(array, spriteUnpacked.width * spriteUnpacked.height)
     
-    width = u64(spriteUnpacked.width)
-    height = u64(spriteUnpacked.height)
+    width = spriteUnpacked.width
+    height = spriteUnpacked.height
     spritePixel: u32
 
     for i := 0; i < (spriteUnpacked.width * spriteUnpacked.height * spriteUnpacked.channels); i += 4 {
@@ -127,21 +127,14 @@ load_from_png :: proc(spriteFile: string, array: ^[dynamic]u32) -> (width:u64, h
     return width, height
 }
 
-draw_tile :: proc(tileSet: ^TileSet, pixelArray: ^[dynamic]u32, index: u64, ctx: ^Ctx) {
-    /*
+draw_tile :: proc(tileSet: ^TileSet, pixelArray: ^[dynamic]u32, coords: Vec2, index: u64, ctx: ^Ctx) {
+    x_offset := 16 * 2
+    y_offset := 16 * 1
     for y in 0 ..< tileSet.tileHeight {
         for x in 0 ..< tileSet.tileWidth {
-            //if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
-                pixelArray[ctx.width * y + x] = tileSet.pixels[tileSet.width * y + x]
-                //pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 8) + x * sprite.spriteWidth]
-            //}
-        }
-    }
-    */
-
-    for y in 0 ..< u64(96) {
-        for x in 0 ..< u64(192) {
-            pixelArray[ctx.width * y + x] = tileSet.pixels[192 * y + x]
+            if (coords.x + int(x) < ctx.width) && (coords.y + int(y) < ctx.height) {
+                pixelArray[ctx.width * (y + coords.y) + x + coords.x] = tileSet.pixels[tileSet.width * (y + y_offset) + (x + x_offset)]
+            }
         }
     }
 }
@@ -149,40 +142,40 @@ draw_tile :: proc(tileSet: ^TileSet, pixelArray: ^[dynamic]u32, index: u64, ctx:
 draw_sprite_static :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sceneInfo: Vec2) {
     for y in 0 ..< sprite.spriteHeight {
         for x in 0 ..< sprite.spriteWidth {
-            if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
-                pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 8) + x * sprite.spriteWidth]
+            if (coords.x + x < sceneInfo.x) && (coords.y + y < sceneInfo.y) {
+                pixelArray[sceneInfo.x * (y + coords.y) + x + coords.x] = sprite.pixels[sprite.width * (y + 8) + x * sprite.spriteWidth]
             }
         }
     }
 }
 
-draw_sprite_dynamic :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, sceneInfo: Vec2, dt: f64) {
+draw_sprite_dynamic :: proc(sprite: ^Sprite, pixelArray: ^[dynamic]u32, coords: Vec2, ctx: ^Ctx, dt: f64) {
     sprite.framePos += dt * sprite.animSpeed
     if sprite.framePos > f64(sprite.lastFrameAnim) + 0.5 {
         sprite.framePos = 0
     }
-    spriteIndex: u64 = u64(math.round(sprite.framePos))
+    spriteIndex: int = int(math.round(sprite.framePos))
 
     if sprite.direction == Direction.right {
         for y in 0 ..< sprite.spriteHeight {
             for x in 0 ..< sprite.spriteWidth {
-                if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
-                    pixelArray[sceneInfo.x * (int(y) + coords.y) + int(x) + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
+                if (coords.x + x < ctx.width) && (coords.y + y < ctx.height) {
+                    pixelArray[ctx.width * (y + coords.y) + x + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
                 }
             }
         }
     } else if sprite.direction == Direction.left {
         for y in 0 ..< sprite.spriteHeight {
             for x in 0 ..< sprite.spriteWidth {
-                if (coords.x + int(x) < sceneInfo.x) && (coords.y + int(y) < sceneInfo.y) {
-                    pixelArray[sceneInfo.x * (int(y) + coords.y) + int(sprite.spriteWidth) - int(x) + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
+                if (coords.x + x < ctx.width) && (coords.y + y < ctx.height) {
+                    pixelArray[ctx.width * (y + coords.y) + sprite.spriteWidth - x + coords.x] = sprite.pixels[sprite.width * (y + 32) + x + spriteIndex * sprite.spriteWidth]
                 }
             }
         }
     }
 }
 
-scale_scene :: proc(scene: ^[dynamic]u32, scaledScene: ^[dynamic]u32, ctx: Ctx) {
+scale_scene :: proc(scene: ^[dynamic]u32, scaledScene: ^[dynamic]u32, ctx: ^Ctx) {
     scaledWidth := ctx.width * ctx.sceneScaling
 
     for y in 0 ..< ctx.height {
@@ -258,8 +251,8 @@ sdl_render :: proc(width, height: i32) {
     ctx: Ctx
 
     ctx.sceneScaling = 6
-    ctx.width = u64(width)
-    ctx.height = u64(height)
+    ctx.width = int(width)
+    ctx.height = int(height)
 
     sdl := sdl_init(&ctx)
     defer {
@@ -310,7 +303,8 @@ sdl_render :: proc(width, height: i32) {
     for ctx.isRunning {
         process_input(&ctx.isRunning, &player)
 
-        draw_tile(&tileSet, &scene, 0, &ctx)
+
+        draw_tile(&tileSet, &scene, Vec2{0,0}, 0, &ctx)
 
         satyr.direction = player.direction
 
@@ -327,9 +321,9 @@ sdl_render :: proc(width, height: i32) {
         //spriteCoords.y = int(tempY)
         spriteCoords.y = int(ctx.height - satyr.spriteHeight) + 3
 
-        draw_sprite_dynamic(&satyr, &scene, spriteCoords, Vec2{int(width), int(height)}, frame_elapsed)
+        draw_sprite_dynamic(&satyr, &scene, spriteCoords, &ctx, frame_elapsed)
 
-        scale_scene(&scene, &scaledScene, ctx)
+        scale_scene(&scene, &scaledScene, &ctx)
 
         sdl2.UpdateTexture(sdl.texture, nil, raw_data(scaledScene), width * i32(ctx.sceneScaling) * size_of(u32))
 
